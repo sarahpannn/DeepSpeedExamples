@@ -65,7 +65,7 @@ def main(args):
     set_seed(42)  # ???
     dataset = load_dataset("glue", "qqp")
     metric = load_metric("glue", "qqp")
-    prompt = "In a yes/no response, do these two questions ask the same thing? "
+    prompt = "In a yes/no response, do these two questions ask the same thing? Answer in one word. "
     test_set = dataset['validation']
     label_table = {'yes': 1,
                    'no': 0, }
@@ -80,10 +80,11 @@ def main(args):
 
         prompt_len = len(prompt) + len(test_set['question1'][i] + " and " +
                                        test_set['question2'][i])
+        
+        print(response)
 
         response = response[0]['generated_text'][prompt_len +
                                                  1:].split()[0].lower()
-        print(response)
         try:
             label = label_table[response]
         except:
@@ -91,7 +92,7 @@ def main(args):
 
         predictions.append(label)
         labels.append(test_set[i]['label'])
-        if i == 70:
+        if i == 2:
             break
 
     correct = 0

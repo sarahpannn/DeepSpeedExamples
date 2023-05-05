@@ -258,6 +258,7 @@ def main():
                                  sampler=eval_sampler,
                                  batch_size=args.per_device_eval_batch_size)
 
+    @torch.no_grad
     def evaluation(model, eval_dataloader, gs):
         model.eval()
         losses = 0
