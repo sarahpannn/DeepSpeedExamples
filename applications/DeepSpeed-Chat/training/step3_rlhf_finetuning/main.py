@@ -22,6 +22,7 @@ import random
 import torch
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
+import wandb
 
 from transformers import (
     AutoTokenizer,
@@ -113,7 +114,7 @@ def parse_args():
     )
     parser.add_argument(
         "--per_device_mini_train_batch_size",
-        type=int,
+        type=int, 
         default=16,
         help=
         "Mini Batch size (per device) for the training dataloader and training purpose."
@@ -365,6 +366,12 @@ def main():
         deepspeed.init_distributed()
 
     args.global_rank = torch.distributed.get_rank()
+    
+    if args.global_rank == 0:
+        wandb.login(key="f7bbd1773b51c894537a7255d0748e43d43ac535")
+        wandb.init(project='Aligned Distillation Step 3 (RLHF Finetune)',
+                   config=args,
+                   )
 
     assert not args.offload, "zero-offload is not currently supported but coming soon!"
 
@@ -408,6 +415,8 @@ def main():
 
     # Train!
     print_rank_0("***** Running training *****", args.global_rank)
+    
+    global_step = 0
 
     for epoch in range(args.num_train_epochs):
         print_rank_0(
@@ -415,6 +424,7 @@ def main():
             args.global_rank)
         for step, (batch_prompt, batch_unsupervised) in enumerate(
                 zip(prompt_train_dataloader, unsupervised_train_dataloader)):
+            global_step += 1
             batch_prompt = to_device(batch_prompt, device)
             if batch_unsupervised is not None:
                 batch_unsupervised = to_device(batch_unsupervised, device)
@@ -443,8 +453,13 @@ def main():
                     for i, (exp_data, unsup_data) in enumerate(
                             zip(exp_dataset, unsup_dataset)):
                         actor_loss, critic_loss = trainer.train_rlhf(exp_data)
-                        actor_loss_sum += actor_loss.item()
-                        critic_loss_sum += critic_loss.item()
+                        wandb.log({
+                            "actor_loss": actor_loss.item(),
+                            "critic_loss": critic_loss.item(),
+                            "reward": exp_data["rewards"].mean(),
+                        }, step=global_step)
+                        critic_loss += actor_loss.item()
+                        actor_loss += critic_loss.item()
                         average_reward += exp_data["rewards"].mean()
 
                         if unsupervised_training_enabled:

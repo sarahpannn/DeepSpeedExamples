@@ -11,6 +11,9 @@ import sys
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
+import wandb
+import tqdm
+from tqdm import tqdm
 
 from transformers import (
     AutoModelForCausalLM,
@@ -185,8 +188,14 @@ def main():
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         # torch.distributed.init_process_group(backend='nccl')
         deepspeed.init_distributed()
-
+        
     args.global_rank = torch.distributed.get_rank()
+    
+    if args.global_rank == 0:
+        wandb.login(key="f7bbd1773b51c894537a7255d0748e43d43ac535")
+        wandb.init(project='Aligned Distillation Step 1 (Supervised Fine Tuning)',
+                   config=args,
+                   )
 
     ds_config = get_train_ds_config(offload=args.offload,
                                     stage=args.zero_stage)
@@ -243,12 +252,13 @@ def main():
                                   collate_fn=default_data_collator,
                                   sampler=train_sampler,
                                   batch_size=args.per_device_train_batch_size)
+    print(len(train_dataloader))
     eval_dataloader = DataLoader(eval_dataset,
                                  collate_fn=default_data_collator,
                                  sampler=eval_sampler,
                                  batch_size=args.per_device_eval_batch_size)
 
-    def evaluation(model, eval_dataloader):
+    def evaluation(model, eval_dataloader, gs):
         model.eval()
         losses = 0
         for step, batch in enumerate(eval_dataloader):
@@ -267,6 +277,8 @@ def main():
             perplexity = get_all_reduce_mean(perplexity).item()
         except:
             pass
+        if perplexity < float("inf"):
+            wandb.log({"eval/perplexity": perplexity}, step=gs)
         return perplexity
 
     # Split weights in two groups, one with weight decay and the other not.
@@ -297,34 +309,43 @@ def main():
 
     if args.gradient_checkpointing:
         model.gradient_checkpointing_enable()
+        
+    global_step = 0
 
     # Train!
     print_rank_0("***** Running training *****", args.global_rank)
     print_rank_0(
         f"***** Evaluating perplexity, Epoch {0}/{args.num_train_epochs} *****",
         args.global_rank)
-    perplexity = evaluation(model, eval_dataloader)
+    perplexity = evaluation(model, eval_dataloader, global_step)
     print_rank_0(f"ppl: {perplexity}", args.global_rank)
+    
 
     for epoch in range(args.num_train_epochs):
         print_rank_0(
             f"Beginning of Epoch {epoch+1}/{args.num_train_epochs}, Total Micro Batches {len(train_dataloader)}",
             args.global_rank)
         model.train()
-        for step, batch in enumerate(train_dataloader):
+        for step, batch in enumerate(tqdm(train_dataloader)):
+            global_step += 1
             batch = to_device(batch, device)
             outputs = model(**batch, use_cache=False)
             loss = outputs.loss
+            wandb.log({"train/loss": loss}, step=global_step)
             model.backward(loss)
             model.step()
+            
+            if not global_step % 1000:
+                perplexity = evaluation(model, eval_dataloader, global_step)
 
         # Evaluate perplexity on the validation set.
         print_rank_0(
             f"***** Evaluating perplexity, Epoch {epoch+1}/{args.num_train_epochs} *****",
             args.global_rank)
-        perplexity = evaluation(model, eval_dataloader)
+        perplexity = evaluation(model, eval_dataloader, global_step)
         print_rank_0(f"ppl: {perplexity}", args.global_rank)
         model.tput_timer.update_epoch_count()
+    wandb.finish()
 
     if args.output_dir is not None:
         print_rank_0('saving the final model ...', args.global_rank)

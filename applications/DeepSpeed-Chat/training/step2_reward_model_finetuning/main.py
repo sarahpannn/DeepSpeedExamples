@@ -11,6 +11,7 @@ import sys
 import torch
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
+import wandb
 
 from transformers import (
     AutoTokenizer,
@@ -187,6 +188,12 @@ def main():
         deepspeed.init_distributed()
 
     args.global_rank = torch.distributed.get_rank()
+    
+    if args.global_rank == 0:
+        wandb.login(key="f7bbd1773b51c894537a7255d0748e43d43ac535")
+        wandb.init(project='Aligned Distillation Step 2 (Reward Modeling)',
+                    config=args,
+                    )
 
     assert not args.offload, "zero-offload is not currently supported but coming soon!"
 
@@ -243,7 +250,7 @@ def main():
                                  sampler=eval_sampler,
                                  batch_size=args.per_device_eval_batch_size)
 
-    def evaluation_reward(model, eval_dataloader):
+    def evaluation_reward(model, eval_dataloader, gs):
         model.eval()
         correct_predictions = 0
         total_predictions = 0
@@ -261,10 +268,15 @@ def main():
             if step == 99:  # For faster evaluation and debugging
                 break
             acc = correct_predictions / total_predictions
+            if acc < float("inf"):
+                wandb.log({"accuracy": acc}, 
+                          step=gs
+                          )
             scores = scores / (step + 1)
         try:
             acc = get_all_reduce_mean(acc).item()
             scores = get_all_reduce_mean(scores).item()
+            
         except:
             pass
         return scores, acc
@@ -300,12 +312,13 @@ def main():
         rm_model.gradient_checkpointing_enable()
 
     # Train!
+    global_step = 0
     print_rank_0("***** Running training *****", args.global_rank)
 
     print_rank_0(
         f"***** Evaluating reward, Epoch {0}/{args.num_train_epochs} *****",
         args.global_rank)
-    reward_score, acc = evaluation_reward(rm_model, eval_dataloader)
+    reward_score, acc = evaluation_reward(rm_model, eval_dataloader, global_step)
     print_rank_0(
         f"chosen_last_scores (higher is better) : {reward_score}, acc (higher is better) : {acc}",
         args.global_rank)
@@ -317,12 +330,18 @@ def main():
         rm_model.train()
         mean_loss = 0
         for step, batch in enumerate(train_dataloader):
+            global_step += 1
             batch = to_device(batch, device)
             outputs = rm_model(**batch, use_cache=False)
             loss = outputs["loss"]
             rm_model.backward(loss)
             rm_model.step()
             mean_loss += loss.item()
+            wandb.log({"loss": loss},
+                      step=global_step)
+    
+            if not global_step % 100:
+                reward_score, acc = evaluation_reward(rm_model, eval_dataloader, global_step)
         print_rank_0(
             f"Epoch {epoch+1}/{args.num_train_epochs} with loss {mean_loss/(step+1)}",
             args.global_rank)
@@ -330,7 +349,7 @@ def main():
         print_rank_0(
             f"***** Evaluating reward, Epoch {epoch+1}/{args.num_train_epochs} *****",
             args.global_rank)
-        reward_score, acc = evaluation_reward(rm_model, eval_dataloader)
+        reward_score, acc = evaluation_reward(rm_model, eval_dataloader, global_step)
         print_rank_0(
             f"chosen_last_scores (higher is better) : {reward_score}, acc (higher is better) : {acc}",
             args.global_rank)
@@ -348,6 +367,7 @@ def main():
                                   args.global_rank,
                                   args.output_dir,
                                   zero_stage=args.zero_stage)
+    wandb.finish()
 
 
 if __name__ == "__main__":
