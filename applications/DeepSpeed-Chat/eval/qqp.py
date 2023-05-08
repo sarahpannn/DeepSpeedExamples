@@ -65,7 +65,7 @@ def main(args):
     set_seed(42)  # ???
     dataset = load_dataset("glue", "qqp")
     metric = load_metric("glue", "qqp")
-    prompt = "In a yes/no response, do these two questions ask the same thing? Answer in one word. "
+    prompt = "Human: Does this question: "
     test_set = dataset['validation']
     label_table = {'yes': 1,
                    'no': 0, }
@@ -74,17 +74,16 @@ def main(args):
 
     for i in range(len(test_set)):
         response = get_model_response(generator, prompt,
-                                      test_set['question1'][i] + " and " +
-                                      test_set['question2'][i],
+                                      test_set['question1'][i] + " ask the same thing as this one: " +
+                                      test_set['question2'][i] + "? Answer in a one-word, yes/no response. Assistant: ",
                                       max_new_tokens=args.max_new_tokens)
 
-        prompt_len = len(prompt) + len(test_set['question1'][i] + " and " +
-                                       test_set['question2'][i])
+        prompt_len = len(prompt) + len(test_set['question1'][i] + " ask the same thing as this one: " +
+                                       test_set['question2'][i] + "? Answer in a one-word, yes/no response. Assistant: ")
         
         print(response)
 
-        response = response[0]['generated_text'][prompt_len +
-                                                 1:].split()[0].lower()
+        response = response[0]['generated_text'][prompt_len:].split()[0].lower()
         try:
             label = label_table[response]
         except:
@@ -92,7 +91,7 @@ def main(args):
 
         predictions.append(label)
         labels.append(test_set[i]['label'])
-        if i == 2:
+        if i == 4:
             break
 
     correct = 0
