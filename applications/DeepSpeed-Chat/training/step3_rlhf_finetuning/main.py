@@ -23,6 +23,7 @@ import torch
 from torch.utils.data import DataLoader, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 import wandb
+import SECRETS
 
 from transformers import (
     AutoTokenizer,
@@ -368,7 +369,7 @@ def main():
     args.global_rank = torch.distributed.get_rank()
     
     if args.global_rank == 0:
-        wandb.login(key="f7bbd1773b51c894537a7255d0748e43d43ac535")
+        wandb.login(key=SECRETS.WANDBID)
         wandb.init(project='Aligned Distillation Step 3 (RLHF Finetune)',
                    config=args,
                    )

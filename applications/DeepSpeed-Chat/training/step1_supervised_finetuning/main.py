@@ -14,6 +14,7 @@ from torch.utils.data.distributed import DistributedSampler
 import wandb
 import tqdm
 from tqdm import tqdm
+from SECRETS import WANDBID
 
 from transformers import (
     AutoModelForCausalLM,
@@ -192,7 +193,7 @@ def main():
     args.global_rank = torch.distributed.get_rank()
     
     if args.global_rank == 0:
-        wandb.login(key="f7bbd1773b51c894537a7255d0748e43d43ac535")
+        wandb.login(key=WANDBID)
         wandb.init(project='Aligned Distillation Step 1 (Supervised Fine Tuning)',
                    config=args,
                    )
@@ -258,7 +259,7 @@ def main():
                                  sampler=eval_sampler,
                                  batch_size=args.per_device_eval_batch_size)
 
-    @torch.no_grad
+    @torch.no_grad()
     def evaluation(model, eval_dataloader, gs):
         model.eval()
         losses = 0
@@ -269,6 +270,8 @@ def main():
 
             loss = outputs.loss
             losses += loss.float()
+            if step >= 0.3 * len(eval_dataloader):
+                break
         losses = losses / (step + 1)
         try:
             perplexity = torch.exp(losses)
@@ -280,6 +283,7 @@ def main():
             pass
         if perplexity < float("inf"):
             wandb.log({"eval/perplexity": perplexity}, step=gs)
+        torch.cuda.empty_cache()
         return perplexity
 
     # Split weights in two groups, one with weight decay and the other not.
@@ -336,7 +340,7 @@ def main():
             model.backward(loss)
             model.step()
             
-            if not global_step % 1000:
+            if not global_step % 10:
                 perplexity = evaluation(model, eval_dataloader, global_step)
 
         # Evaluate perplexity on the validation set.
