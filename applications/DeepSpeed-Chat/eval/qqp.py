@@ -62,47 +62,49 @@ def process_response(response, num_rounds):
 
 def main(args):
     generator = get_generator(args.path)
-    set_seed(42)  # ???
+    # set_seed(42)  # ???
     dataset = load_dataset("glue", "qqp")
+    dataset = dataset.shuffle()
     metric = load_metric("glue", "qqp")
-    prompt = "Human: Does this question: "
+    prefix = "Human: Do these two questions ask the same thing? "
+    shot_one = "Why are computers so expensive? How expensive are computers? [y/n] \nAssistant: No. \n"
+    shot_two = "What color is a banana? What shade of color does a banana have? [y/n] \nAssistant: Yes. \n"
+    prompt = prefix + shot_one + prefix + shot_two + prefix
     test_set = dataset['validation']
     label_table = {'yes': 1,
                    'no': 0, }
 
-    predictions, labels = [], []
+    predictions, labels = [], dataset['validation']['label']
 
     for i in range(len(test_set)):
         response = get_model_response(generator, prompt,
-                                      test_set['question1'][i] + " ask the same thing as this one: " +
-                                      test_set['question2'][i] + "? Answer in a one-word, yes/no response. Assistant: ",
+                                      test_set['question1'][i] + " " +
+                                      test_set['question2'][i] + " [y/n] \nAssistant: ",
                                       max_new_tokens=args.max_new_tokens)
 
-        prompt_len = len(prompt) + len(test_set['question1'][i] + " ask the same thing as this one: " +
-                                       test_set['question2'][i] + "? Answer in a one-word, yes/no response. Assistant: ")
+        prompt_len = len(prompt) + len(test_set['question1'][i] + " " +
+                                       test_set['question2'][i] + " [y/n] \nAssistant: ")
         
-        print(response)
-
-        response = response[0]['generated_text'][prompt_len:].split()[0].lower()
-        try:
-            label = label_table[response]
-        except:
-            label = -1
-
-        predictions.append(label)
-        labels.append(test_set[i]['label'])
-        if i == 4:
+        if len(response[0]['generated_text'][prompt_len:]) > 0:
+            try:
+                if response[0]['generated_text'][prompt_len:].split()[0].lower() == 'yes':
+                    predictions.append(1)
+                if response[0]['generated_text'][prompt_len:].split()[0].lower() == 'no':
+                    predictions.append(0)
+            except:
+                predictions.append(-1)
+        
+        print(response[0]['generated_text']
+              [len(prompt):])
+        
+        if i == 20:
             break
-
+    
     correct = 0
-    negatives = 0
-
     for i in range(len(predictions)):
-        negatives += predictions[i] == -1
         correct += predictions[i] == labels[i]
 
     print(correct/len(predictions))
-    print(negatives)
 
 
 if __name__ == "__main__":

@@ -280,6 +280,7 @@ def main():
             
         except:
             pass
+        model.train()
         return scores, acc
 
     # Split weights in two groups, one with weight decay and the other not.
