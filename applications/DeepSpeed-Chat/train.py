@@ -129,7 +129,7 @@ def get_script(args, step_num):
         step_dirs[step_num],
         "training_scripts",
         args.deployment_type,
-        f"run_{model_size}.sh",
+        f"run_{model_size}_lora.sh",
     )
     assert os.path.isfile(
         script

@@ -7,7 +7,7 @@ import transformers  # noqa: F401
 from transformers import pipeline, set_seed
 from transformers import AutoConfig, OPTForCausalLM, AutoTokenizer
 from datasets import load_dataset, load_metric
-
+from tqdm import tqdm
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -69,14 +69,16 @@ def main(args):
     prefix = "Human: Do these two questions ask the same thing? "
     shot_one = "Why are computers so expensive? How expensive are computers? [y/n] \nAssistant: No. \n"
     shot_two = "What color is a banana? What shade of color does a banana have? [y/n] \nAssistant: Yes. \n"
-    prompt = prefix + shot_one + prefix + shot_two + prefix
+    shot_three = "What is the capital of California? Where is the capital of Georgia? [y/n] \nAssistant: No. \n"
+    shot_four = "How many markers do you have? What is the number of markers you have? [y/n] \nAssistant: Yes. \n"
+    shot_five = "How should I write a book? Have you ever written a novel? [y/n] \nAssistant: No. \n"
+    shot_six = "Can I get a decaf coffee? Can I get a coffee without caffeine? [y/n] \nAssistant: Yes. \n"
+    prompt = prefix + shot_two + prefix + shot_one + prefix + shot_three + prefix + shot_four + prefix + shot_five + prefix + shot_six + prefix
     test_set = dataset['validation']
-    label_table = {'yes': 1,
-                   'no': 0, }
 
     predictions, labels = [], dataset['validation']['label']
 
-    for i in range(len(test_set)):
+    for i in range(len(tqdm(test_set))):
         response = get_model_response(generator, prompt,
                                       test_set['question1'][i] + " " +
                                       test_set['question2'][i] + " [y/n] \nAssistant: ",
@@ -87,24 +89,29 @@ def main(args):
         
         if len(response[0]['generated_text'][prompt_len:]) > 0:
             try:
-                if response[0]['generated_text'][prompt_len:].split()[0].lower() == 'yes':
+                # print(response[0]['generated_text']
+                #       [prompt_len:].split()[0].lower())
+                if "yes" in response[0]['generated_text'][prompt_len:].split()[0].lower():
                     predictions.append(1)
-                if response[0]['generated_text'][prompt_len:].split()[0].lower() == 'no':
+                elif "no" in response[0]['generated_text'][prompt_len:].split()[0].lower():
                     predictions.append(0)
+                else:
+                    predictions.append(-1)
             except:
                 predictions.append(-1)
-        
-        print(response[0]['generated_text']
-              [len(prompt):])
-        
-        if i == 20:
+        if i == 1000:
             break
+        
+        # print(response[0]['generated_text'])
+        # print("~~~~~~~~~~~~~~~~~~~~")
     
     correct = 0
+    tot = 0
     for i in range(len(predictions)):
         correct += predictions[i] == labels[i]
+        tot += predictions[i] != -1
 
-    print(correct/len(predictions))
+    print(correct/tot)
 
 
 if __name__ == "__main__":

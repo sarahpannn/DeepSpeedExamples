@@ -270,8 +270,6 @@ def main():
 
             loss = outputs.loss
             losses += loss.float()
-            if step >= 0.3 * len(eval_dataloader):
-                break
         losses = losses / (step + 1)
         try:
             perplexity = torch.exp(losses)
@@ -283,7 +281,7 @@ def main():
             pass
         if perplexity < float("inf"):
             wandb.log({"eval/perplexity": perplexity}, step=gs)
-        torch.cuda.empty_cache()
+        model.train()
         return perplexity
 
     # Split weights in two groups, one with weight decay and the other not.
@@ -340,8 +338,23 @@ def main():
             model.backward(loss)
             model.step()
             
-            if not global_step % 10:
+            if not global_step % 100:
                 perplexity = evaluation(model, eval_dataloader, global_step)
+                
+            if not global_step % 800:
+                if args.output_dir is not None:
+                    print_rank_0('saving a checkpointed model ...', args.global_rank)
+                    model = convert_lora_to_linear_layer(model)
+
+                    if args.global_rank == 0:
+                        save_hf_format(model, tokenizer, args)
+
+                    if args.zero_stage == 3:
+                        # For zero stage 3, each gpu only has a part of the model, so we need a special save function
+                        save_zero_three_model(model,
+                                            args.global_rank,
+                                            args.output_dir,
+                                            zero_stage=args.zero_stage)
 
         # Evaluate perplexity on the validation set.
         print_rank_0(

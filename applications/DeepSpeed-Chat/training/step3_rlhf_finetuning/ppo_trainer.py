@@ -83,13 +83,13 @@ class DeepSpeedPPOTrainer():
         valid_ans_len = (ans != self.tokenizer.pad_token_id).sum(dim=-1)
         out_seq = []
         for i in range(batch_size):
-            if valid_ans_len[
-                    i] <= 1:  # if the answer is shorter than 1 token, drop it
+            if valid_ans_len[i] <= 1:  # if the answer is shorter than 1 token, drop it
                 continue
             else:
                 out_seq.append(seq[i:i + 1])
-        out_seq = torch.cat(out_seq, dim=0)  # concate output in the batch dim
 
+        out_seq = torch.cat(out_seq, dim=0)
+        
         return out_seq
 
     def generate_experience(self, prompts):
