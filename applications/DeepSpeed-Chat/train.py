@@ -142,11 +142,11 @@ def verify_model(args, step_num):
     output_dir = get_output_dir(args, step_num)
     model_size = get_model_size(args, step_num)
     model_file = os.path.join(output_dir, "pytorch_model.bin")
-    if not os.path.isfile(model_file):
-        error_str = f"Step {step_num} model has not been trained. Train it with:\n"
-        error_str += f"python3 train.py --step {step_num}"
-        error_str += f" --{model_type[step_num]}-model {model_size}"
-        raise RuntimeError(error_str)
+    # if not os.path.isfile(model_file):
+    #     error_str = f"Step {step_num} model has not been trained. Train it with:\n"
+    #     error_str += f"python3 train.py --step {step_num}"
+    #     error_str += f" --{model_type[step_num]}-model {model_size}"
+    #     raise RuntimeError(error_str)
 
 
 def get_cmd(args, step_num):

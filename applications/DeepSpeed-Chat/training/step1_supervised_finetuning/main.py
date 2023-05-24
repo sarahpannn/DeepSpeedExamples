@@ -338,7 +338,7 @@ def main():
             model.backward(loss)
             model.step()
             
-            if not global_step % 100:
+            if not global_step % 500:
                 perplexity = evaluation(model, eval_dataloader, global_step)
                 
             if not global_step % 800:
