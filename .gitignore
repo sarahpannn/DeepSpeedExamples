@@ -1,6 +1,6 @@
 applications/DeepSpeed-Chat/output/
 **/wandb/**
-/SECRETS.py
+**/SECRETS.py
 **/output/**
 # Byte-compiled / optimized / DLL files
 __pycache__/
